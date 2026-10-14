@@ -691,3 +691,24 @@ mise run check
 ```
 
 See [DEVELOPING.md](DEVELOPING.md) for the complete development workflow.
+
+### Client-scoped HTTP headers
+
+Derive a client for a session or tenant without changing the shared client:
+
+```rust,no_run
+# async fn example(client: lithos_llm::Client) -> Result<(), lithos_llm::types::Error> {
+let session = client.with_default_headers([("x-session-id", "session-123")])?;
+// Use `session.complete(...)`, `session.stream(...)`, etc. as usual.
+# Ok(())
+# }
+```
+
+The derived client shares adapters, middleware and the HTTP pool. Additional
+calls to `with_default_headers` retain previous defaults and replace matching
+names case-insensitively. Codec, provider `default_headers`, and credential
+headers override client defaults. All built-in HTTP operations carry the headers,
+including retries, token counting and evaluation; Bedrock applies them before
+signing. Custom adapters can read `call.context().default_headers()` and must
+apply them themselves. Header values are redacted in Debug output and are not
+serialized into the model request. Authentication belongs in credential providers.

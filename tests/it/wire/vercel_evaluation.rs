@@ -120,8 +120,10 @@ async fn an_evaluation_row_on_a_mixed_provider_reaches_this_codec() {
     let catalog = mixed_provider_catalog(&server.base_url());
     // `client_for` fails if the provider's adapter, which holds both codecs,
     // did not build.
-    let client = support::client_for(catalog, PROVIDER, support::bearer_credentials());
-    let (mock, _slot) = support::mount_capture(&server, PATH, &body(LIVE_BODY));
+    let client = support::client_for(catalog, PROVIDER, support::bearer_credentials())
+        .with_default_headers([("x-trace", "evaluation")])
+        .expect("valid headers");
+    let (mock, slot) = support::mount_capture(&server, PATH, &body(LIVE_BODY));
 
     let verdict = client
         .evaluate(evaluation())
@@ -129,6 +131,11 @@ async fn an_evaluation_row_on_a_mixed_provider_reaches_this_codec() {
         .expect("the row's derived codec should evaluate natively");
 
     mock.assert_async().await;
+    assert!(
+        support::captured(&slot)
+            .headers
+            .contains(&("x-trace".to_owned(), "evaluation".to_owned()))
+    );
     assert_eq!(
         verdict
             .choice("department")

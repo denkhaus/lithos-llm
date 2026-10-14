@@ -52,3 +52,5 @@ mod openai_chat;
 mod openai_responses;
 mod systemone;
 mod vercel_evaluation;
+
+mod client_headers;

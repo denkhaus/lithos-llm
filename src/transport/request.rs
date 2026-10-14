@@ -34,6 +34,7 @@ pub(crate) struct PreparedRequest {
 }
 
 pub(crate) struct EncodedRequest {
+    default_headers:   HeaderMap,
     pub method:        Method,
     pub url:           String,
     pub headers:       Vec<(String, String)>,
@@ -61,6 +62,7 @@ impl EncodedRequest {
     /// Creates a request with no headers, no timeout, and no warnings.
     pub(crate) fn new(method: Method, url: String, body: Value) -> Self {
         Self {
+            default_headers: HeaderMap::new(),
             method,
             url,
             body,
@@ -70,6 +72,12 @@ impl EncodedRequest {
             applied_speed: None,
             framing: StreamFraming::Sse(SseDispatch::BlankLine),
         }
+    }
+
+    #[must_use]
+    pub(crate) fn with_default_headers(mut self, headers: &HeaderMap) -> Self {
+        self.default_headers = headers.clone();
+        self
     }
 
     /// Records the speed the codec encoded into the request.
@@ -116,10 +124,10 @@ impl EncodedRequest {
 
     /// Builds the final headers and bytes for this request.
     ///
-    /// Header precedence is codec headers, then the provider's catalog
-    /// default headers, then the credential headers, so credentials win every
-    /// collision. The JSON content type goes in first, so any of those may
-    /// replace it.
+    /// Header precedence is client defaults, then codec headers, then the
+    /// provider's catalog default headers, then the credential headers, so
+    /// credentials win every collision. The JSON content type goes in
+    /// first, so any of those may replace it.
     ///
     /// # Errors
     ///
@@ -153,7 +161,7 @@ impl EncodedRequest {
         provider: &CatalogProvider,
         credentials: Option<&Credentials>,
     ) -> Result<PreparedRequest, Error> {
-        let mut headers = HeaderMap::new();
+        let mut headers = self.default_headers;
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         merge_headers(
             &mut headers,

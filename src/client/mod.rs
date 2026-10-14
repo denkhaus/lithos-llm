@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub use probe::{ProbeOptions, ProbeOutcome, ProbeReport};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::redirect::Policy;
 use thiserror::Error;
 
@@ -52,6 +53,7 @@ pub struct StructuredCompletion {
 /// An immutable provider-neutral client.
 #[derive(Clone)]
 pub struct Client {
+    default_headers: Arc<HeaderMap>,
     default_timeout: Option<Duration>,
     catalog:         Catalog,
     resolver:        Arc<dyn ModelResolver>,
@@ -69,6 +71,49 @@ impl fmt::Debug for Client {
 }
 
 impl Client {
+    /// Derives an independent client with additional default HTTP headers.
+    ///
+    /// Existing scoped defaults are retained; supplied names replace them
+    /// case-insensitively. Codec, provider catalog, and credential headers take
+    /// precedence over these defaults. The original client is unchanged, and
+    /// the derived client shares its connection pool, adapters and middleware.
+    ///
+    /// Defaults reach every built-in HTTP operation, including retries and
+    /// Bedrock signing. Custom adapters can read them from
+    /// [`CallContext::default_headers`]. They are not serialized into requests.
+    /// Header values are redacted in Debug output. Use credential providers
+    /// for authentication, especially credentials that must be refreshed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ErrorKind::Configuration`] for invalid HTTP names or values.
+    pub fn with_default_headers<K, V>(
+        &self,
+        headers: impl IntoIterator<Item = (K, V)>,
+    ) -> Result<Self, Error>
+    where
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        let mut client = self.clone();
+        for (name, value) in headers {
+            let name = HeaderName::from_bytes(name.as_ref().as_bytes()).map_err(|source| {
+                Error::new(ErrorKind::Configuration, "invalid default HTTP header name")
+                    .with_source(source)
+            })?;
+            let mut value = HeaderValue::from_str(value.as_ref()).map_err(|source| {
+                Error::new(
+                    ErrorKind::Configuration,
+                    "invalid default HTTP header value",
+                )
+                .with_source(source)
+            })?;
+            value.set_sensitive(true);
+            Arc::make_mut(&mut client.default_headers).insert(name, value);
+        }
+        Ok(client)
+    }
+
     pub fn builder() -> ClientBuilder {
         ClientBuilder::new()
     }
@@ -420,6 +465,7 @@ impl Client {
         timeout: Option<Duration>,
         mut context: CallContext,
     ) -> Result<CallContext, Error> {
+        context.default_headers = self.default_headers.clone();
         if let Some(timeout) = timeout.or(self.default_timeout) {
             let guard = CallGuard::new(&context).with_timeout(timeout)?;
             if let Some(deadline) = guard.deadline() {
@@ -862,6 +908,7 @@ impl ClientBuilder {
             ready,
             credential_issues,
             client: Client {
+                default_headers: Arc::default(),
                 default_timeout: self.default_timeout,
                 catalog,
                 resolver: self.resolver,
