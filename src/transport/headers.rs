@@ -71,8 +71,10 @@ fn header_string(headers: &HeaderMap, names: &[&str]) -> Option<String> {
 /// Merges every header source for one request into `headers`, later sources
 /// winning.
 ///
-/// The order is codec headers, then provider default headers from the catalog,
-/// then credential headers. Credentials therefore win every collision.
+/// `headers` may already hold the client's default headers and the JSON
+/// content type, which every source here replaces. The order is codec
+/// headers, then provider default headers from the catalog, then credential
+/// headers. Credentials therefore win every collision.
 /// `credentials` is `None` for a request the caller authenticates afterwards,
 /// as the SigV4 signer does.
 pub(super) fn merge_headers(
