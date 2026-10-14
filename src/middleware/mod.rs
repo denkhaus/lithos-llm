@@ -24,6 +24,7 @@ pub(crate) use guard::CallGuard;
 #[cfg(feature = "local-files")]
 pub use local_files::{InlineLocalFiles, media_type_for_path};
 pub use observer::{CallOutcome, Observer, ObserverMiddleware, RetryEvent, RetryStage};
+use reqwest::header::HeaderMap;
 pub use retry::{RetryMiddleware, RetryPolicy};
 use tokio::sync::Notify;
 pub use tracing_layer::TracingMiddleware;
@@ -133,26 +134,35 @@ impl fmt::Debug for Extensions {
 /// Runtime context shared by middleware and the provider adapter.
 #[derive(Clone, Debug)]
 pub struct CallContext {
-    call_id:      uuid::Uuid,
-    attempt:      u32,
-    extensions:   Extensions,
-    deadline:     Option<Instant>,
-    cancellation: CancellationToken,
+    pub(crate) default_headers: Arc<HeaderMap>,
+    call_id:                    uuid::Uuid,
+    attempt:                    u32,
+    extensions:                 Extensions,
+    deadline:                   Option<Instant>,
+    cancellation:               CancellationToken,
 }
 
 impl Default for CallContext {
     fn default() -> Self {
         Self {
-            call_id:      uuid::Uuid::new_v4(),
-            attempt:      1,
-            extensions:   Extensions::default(),
-            deadline:     None,
-            cancellation: CancellationToken::default(),
+            default_headers: Arc::default(),
+            call_id:         uuid::Uuid::new_v4(),
+            attempt:         1,
+            extensions:      Extensions::default(),
+            deadline:        None,
+            cancellation:    CancellationToken::default(),
         }
     }
 }
 
 impl CallContext {
+    /// Client-scoped HTTP defaults for custom adapters. Merge these before
+    /// protocol, provider and authentication headers, and before signing.
+    /// Values are marked sensitive so Debug output does not disclose them.
+    pub fn default_headers(&self) -> &HeaderMap {
+        &self.default_headers
+    }
+
     pub fn new() -> Self {
         Self::default()
     }

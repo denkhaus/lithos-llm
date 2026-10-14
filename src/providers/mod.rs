@@ -377,6 +377,7 @@ pub(super) mod http {
             let provider = call.route().provider();
             let credentials = self.resolve_credentials(provider).await?;
             let mut encoded = codec.encode(call, false)?;
+            encoded = encoded.with_default_headers(call.context().default_headers());
             self.identify(&mut encoded);
             let warnings = take(&mut encoded.warnings);
             // Cost estimation uses the speed the codec put on the wire, not
@@ -402,6 +403,7 @@ pub(super) mod http {
             let provider = call.route().provider();
             let credentials = self.resolve_credentials(provider).await?;
             let mut encoded = codec.encode(call, true)?;
+            encoded = encoded.with_default_headers(call.context().default_headers());
             self.identify(&mut encoded);
             let warnings = take(&mut encoded.warnings);
             let speed = encoded.applied_speed;
@@ -427,6 +429,7 @@ pub(super) mod http {
             let Some(mut encoded) = codec.encode_count_tokens(call).transpose()? else {
                 return Ok(None);
             };
+            encoded = encoded.with_default_headers(call.context().default_headers());
             self.identify(&mut encoded);
             let provider = call.route().provider();
             let credentials = self.resolve_credentials(provider).await?;
@@ -444,6 +447,7 @@ pub(super) mod http {
             // A refusal the codec can make needs no credentials, so encoding
             // comes first.
             let mut encoded = codec.encode_evaluation(call)?;
+            encoded = encoded.with_default_headers(call.context().default_headers());
             self.identify(&mut encoded);
             let warnings = take(&mut encoded.warnings);
             let credentials = self.resolve_credentials(provider).await?;

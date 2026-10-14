@@ -204,6 +204,7 @@ impl BedrockAdapter {
         encoded: EncodedRequest,
     ) -> Result<PreparedRequest, Error> {
         let provider = call.route().provider();
+        let encoded = encoded.with_default_headers(call.context().default_headers());
         match resolve_credentials(self.credentials.as_ref(), provider).await? {
             credentials @ Credentials::BedrockBearer(_) => encoded.prepare(provider, &credentials),
             #[cfg(feature = "bedrock-aws")]
@@ -417,14 +418,25 @@ mod tests {
     -> Result<(), Box<dyn StdError>> {
         let server = httpmock::MockServer::start_async().await;
         let catalog = catalog(&server.base_url())?;
-        let call = call(&catalog)?;
-        let encoded = BedrockConverseCodec.encode(&call, false)?;
+        let original = call(&catalog)?;
+        let mut call_context = original.context().clone();
+        Arc::make_mut(&mut call_context.default_headers).insert("x-trace", "scoped".parse()?);
+        let call = ResolvedCall::new(
+            original.request().clone(),
+            original.route().clone(),
+            call_context,
+        )
+        .with_codec(original.codec().cloned());
+        let encoded = BedrockConverseCodec
+            .encode(&call, false)?
+            .with_default_headers(call.context().default_headers());
         let method = encoded.method.clone();
         let url = encoded.url.clone();
         let body = encoded.body.clone();
 
         let prepared = encoded.prepare_unauthenticated(provider(&catalog)?)?;
 
+        assert_eq!(prepared.headers["x-trace"], "scoped");
         assert_eq!(prepared.method, method);
         assert_eq!(prepared.url, url);
         assert_eq!(prepared.body, serde_json::to_vec(&body)?);
@@ -449,6 +461,7 @@ mod tests {
             .mock_async(|when, then| {
                 when.method(prepared.method.as_str())
                     .path(path)
+                    .header("x-trace", "scoped")
                     .json_body(body);
                 then.status(200)
                     .header("content-type", "application/json")

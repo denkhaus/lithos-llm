@@ -419,4 +419,22 @@ mod tests {
         );
         assert_ne!(authorization(&original), authorization(&altered));
     }
+
+    /// Client default headers reach the signer marked sensitive, and must
+    /// still be signed like any other header.
+    #[test]
+    fn a_sensitive_header_is_signed() {
+        let mut headers = json_headers();
+        let mut session = HeaderValue::from_static("run-1");
+        session.set_sensitive(true);
+        headers.insert("x-session-id", session);
+
+        let signed = sign_fixed(&credentials(None), &headers, BODY);
+
+        assert!(
+            authorization(&signed)
+                .contains("SignedHeaders=content-type;host;x-amz-date;x-session-id"),
+            "the sensitive header joins the signed set"
+        );
+    }
 }
